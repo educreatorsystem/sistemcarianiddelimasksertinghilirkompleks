@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="ms" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistem Carian Emel DELIMa Murid - SK Serting Hilir Kompleks</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+  <style>
+* { font-family: 'Plus Jakarta Sans', sans-serif; }
+.toast-enter { animation: toastIn 0.4s ease; }
+@keyframes toastIn { from { opacity:0; transform: translateY(-12px); } to { opacity:1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+.fade-in { animation: fadeIn 0.35s ease; }
+@keyframes pulse-dot { 0%,100%{opacity:.4} 50%{opacity:1} }
+.loading-dot { animation: pulse-dot 1s infinite; }
+.loading-dot:nth-child(2) { animation-delay: .2s; }
+.loading-dot:nth-child(3) { animation-delay: .4s; }
+</style>
+  <script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        ocean: { 50:'#f0f7ff', 100:'#e0effe', 200:'#b9dffd', 300:'#7cc5fb', 400:'#36a8f6', 500:'#0c8ce7', 600:'#006ec5', 700:'#0058a0', 800:'#044b84', 900:'#03406e' },
+        mint: { 50:'#edfcf5', 100:'#d3f8e6', 200:'#aaf0d1', 300:'#73e2b5', 400:'#3acc95', 500:'#1fb47d', 600:'#178f64', 700:'#167352', 800:'#155b43', 900:'#134b39' }
+      }
+    }
+  }
+}
+</script>
+  <style>body { box-sizing: border-box; }</style>
+ </head>
+ <body class="h-full bg-ocean-50 overflow-auto">
+  <div id="app" class="h-full w-full flex flex-col">
+   <!-- Header -->
+   <header class="bg-white border-b border-ocean-100 shadow-sm">
+    <div class="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
+     <img id="school-logo" src="https://iili.io/CaqON8Q.md.png" alt="Lencana Sekolah" class="w-14 h-14 object-contain rounded-lg" loading="lazy" onerror="this.style.background='#e0effe';this.alt='Logo';">
+     <div class="flex-1 min-w-0">
+      <h1 id="school-name-el" class="text-lg font-800 text-ocean-800 leading-tight truncate">SEKOLAH KEBANGSAAN SERTING HILIR KOMPLEKS</h1>
+      <p class="text-xs font-600 text-ocean-500 tracking-wide mt-0.5">SISTEM CARIAN EMEL DELIMa MURID</p>
+     </div>
+     <div class="hidden sm:flex items-center gap-1.5 bg-mint-100 text-mint-700 text-xs font-600 px-3 py-1.5 rounded-full">
+      <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Selamat
+     </div>
+    </div>
+   </header><!-- Toast -->
+   <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div><!-- Main -->
+   <main class="flex-1 w-full max-w-3xl mx-auto px-4 py-6 flex flex-col gap-5">
+    <!-- Privacy Notice -->
+    <div class="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+     <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-500 mt-0.5 shrink-0"></i>
+     <p id="privacy-el" class="text-xs text-amber-700 font-500 leading-relaxed">Maklumat ini adalah sulit. Sila jaga kerahsiaan data murid.</p>
+    </div><!-- Search -->
+    <div class="relative">
+     <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-ocean-400 pointer-events-none"></i> <input id="search-input" type="text" autocomplete="off" class="w-full pl-12 pr-4 py-3.5 bg-white border-2 border-ocean-200 rounded-2xl text-sm font-500 text-ocean-900 placeholder-ocean-300 focus:outline-none focus:border-ocean-500 focus:ring-4 focus:ring-ocean-100 transition-all" placeholder="Cari nama murid...">
+     <div id="suggestions" class="absolute z-40 top-full mt-1 w-full bg-white rounded-2xl shadow-xl border border-ocean-100 overflow-hidden hidden max-h-64 overflow-y-auto"></div>
+    </div><!-- Loading -->
+    <div id="loading-state" class="hidden flex-col items-center py-12 gap-3">
+     <div class="flex gap-1.5">
+      <div class="w-2.5 h-2.5 rounded-full bg-ocean-400 loading-dot"></div>
+      <div class="w-2.5 h-2.5 rounded-full bg-ocean-400 loading-dot"></div>
+      <div class="w-2.5 h-2.5 rounded-full bg-ocean-400 loading-dot"></div>
+     </div>
+     <p class="text-sm text-ocean-400 font-500">Memuatkan data murid...</p>
+    </div><!-- Empty state -->
+    <div id="empty-state" class="hidden flex-col items-center py-12 gap-3 text-center">
+     <div class="w-16 h-16 rounded-full bg-ocean-100 flex items-center justify-center">
+      <i data-lucide="users" class="w-8 h-8 text-ocean-300"></i>
+     </div>
+     <p class="text-sm text-ocean-400 font-500">Taip nama murid untuk memulakan carian</p>
+    </div><!-- Student Card -->
+    <div id="student-card" class="hidden fade-in">
+     <div class="bg-white rounded-2xl border border-ocean-100 shadow-lg overflow-hidden">
+      <!-- Student info top -->
+      <div class="bg-gradient-to-r from-ocean-600 to-ocean-500 px-5 py-4">
+       <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center text-white font-700 text-lg" id="avatar"></div>
+        <div class="flex-1 min-w-0">
+         <p id="s-name" class="text-white font-700 text-base truncate"></p>
+         <p id="s-class" class="text-ocean-200 text-xs font-500 mt-0.5"></p>
+        </div>
+       </div>
+      </div>
+      <div class="p-5 flex flex-col gap-4">
+       <!-- DELIMa ID -->
+       <div>
+        <label class="text-xs font-600 text-ocean-400 uppercase tracking-wider mb-1.5 block">ID Emel DELIMa</label>
+        <div class="flex items-center gap-2">
+         <div class="flex-1 bg-ocean-50 rounded-xl px-4 py-2.5 flex items-center gap-2">
+          <i data-lucide="mail" class="w-4 h-4 text-ocean-400 shrink-0"></i> <span id="s-email" class="text-sm font-600 text-ocean-800 break-all"></span>
+         </div><button id="copy-btn" onclick="copyEmail()" class="shrink-0 w-10 h-10 rounded-xl bg-ocean-100 hover:bg-ocean-200 text-ocean-600 flex items-center justify-center transition-colors" title="Salin"> <i data-lucide="copy" class="w-4 h-4"></i> </button>
+        </div>
+       </div><!-- Verification -->
+       <div class="border-t border-ocean-100 pt-4">
+        <div class="flex items-center gap-2 mb-3">
+         <i data-lucide="lock" class="w-4 h-4 text-ocean-500"></i> <label class="text-xs font-600 text-ocean-400 uppercase tracking-wider">Pengesahan Keselamatan</label>
+        </div>
+        <p class="text-xs text-ocean-400 mb-3">Masukkan <strong>4 digit terakhir</strong> No. Kad Pengenalan murid untuk melihat password.</p>
+        <div class="flex gap-2">
+         <input id="ic-input" type="password" maxlength="4" inputmode="numeric" pattern="[0-9]*" class="flex-1 px-4 py-3 bg-ocean-50 border-2 border-ocean-200 rounded-xl text-center text-lg font-700 tracking-[0.3em] text-ocean-800 placeholder-ocean-300 focus:outline-none focus:border-ocean-500 focus:ring-4 focus:ring-ocean-100 transition-all" placeholder="● ● ● ●"> <button id="verify-btn" onclick="verifyIC()" class="px-5 py-3 bg-mint-500 hover:bg-mint-600 active:scale-95 text-white font-600 text-sm rounded-xl transition-all flex items-center gap-2 shrink-0"> <i data-lucide="shield-check" class="w-4 h-4"></i> <span class="hidden sm:inline">Sahkan</span> </button>
+        </div>
+        <div id="verify-error" class="hidden mt-3 flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+         <i data-lucide="x-circle" class="w-4 h-4 text-red-500 mt-0.5 shrink-0"></i>
+         <p class="text-xs text-red-600 font-500">Pengesahan gagal. Sila masukkan 4 digit terakhir MyKad dengan betul.</p>
+        </div>
+       </div><!-- Password reveal -->
+       <div id="password-section" class="hidden fade-in border-t border-ocean-100 pt-4">
+        <div class="flex items-center gap-2 mb-2">
+         <i data-lucide="key" class="w-4 h-4 text-mint-600"></i> <label class="text-xs font-600 text-mint-600 uppercase tracking-wider">Password DELIMa</label>
+        </div>
+        <div class="bg-mint-50 border border-mint-200 rounded-xl px-4 py-3 flex items-center justify-between">
+         <span id="s-password" class="text-base font-700 text-mint-800 tracking-wide"></span> <button onclick="copyPassword()" class="text-mint-600 hover:text-mint-700 transition-colors" title="Salin Password"> <i data-lucide="copy" class="w-4 h-4"></i> </button>
+        </div>
+       </div>
+      </div>
+     </div>
+    </div><!-- Stats -->
+    <div id="stats" class="hidden mt-auto pt-6 border-t border-ocean-100">
+     <div class="flex flex-col items-center justify-center gap-2 text-center">
+      <div class="flex items-center justify-center gap-2">
+       <i data-lucide="users" class="w-5 h-5 text-ocean-400"></i> <span id="stats-text" class="text-sm font-600 text-ocean-600"></span>
+      </div>
+      <p class="text-xs text-ocean-300 font-400">Data nama, kelas, emel DELIMa, No. KP dan password</p>
+     </div>
+    </div>
+   </main>
+  </div>
+  <script>
+let studentsData = [];
+let selectedStudent = null;
+
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSLl0GPeQkkr3IW9dDsXAr8wPydOqUyM6xc2hzkfW4wnvGHsAelw42tg_vv11hJIZ6i0xqmFItlrSYK/pub?gid=824754415&single=true&output=csv';
+
+// Susunan kolum: Emel | Nama | Tahun/Tingkatan | Kelas | NO KP MURID | PASSWORD
+
+const defaultConfig = {
+  school_name: 'SEKOLAH KEBANGSAAN SERTING HILIR KOMPLEKS',
+  search_placeholder: 'Cari nama murid...',
+  privacy_notice: 'Maklumat ini adalah sulit. Sila jaga kerahsiaan data murid.',
+  bg_color: '#f0f7ff',
+  card_color: '#ffffff',
+  text_color: '#03406e',
+  primary_color: '#006ec5',
+  accent_color: '#1fb47d',
+  font_family: 'Plus Jakarta Sans',
+  font_size: 14
+};
+
+function applyConfig(config) {
+  const c = { ...defaultConfig, ...config };
+  document.getElementById('school-name-el').textContent = c.school_name;
+  document.getElementById('search-input').placeholder = c.search_placeholder;
+  document.getElementById('privacy-el').textContent = c.privacy_notice;
+
+  document.body.style.backgroundColor = c.bg_color;
+
+  const cards = document.querySelectorAll('.bg-white');
+  cards.forEach(el => el.style.backgroundColor = c.card_color);
+
+  const font = c.font_family + ', Plus Jakarta Sans, sans-serif';
+  document.body.style.fontFamily = font;
+
+  const baseSize = c.font_size || 14;
+  document.getElementById('school-name-el').style.fontSize = (baseSize * 1.3) + 'px';
+  document.getElementById('privacy-el').style.fontSize = (baseSize * 0.85) + 'px';
+  document.getElementById('search-input').style.fontSize = baseSize + 'px';
+
+  // header gradient
+  const hdr = document.querySelector('.bg-gradient-to-r');
+  if (hdr) hdr.style.background = `linear-gradient(to right, ${c.primary_color}, ${c.primary_color}dd)`;
+
+  const vBtn = document.getElementById('verify-btn');
+  if (vBtn) { vBtn.style.backgroundColor = c.accent_color; }
+}
+
+applyConfig(defaultConfig);
+
+// CSV Parser yang lebih stabil untuk data Google Sheet
+// Susunan kolum Google Sheet:
+// Emel | Nama | Tahun/Tingkatan | Kelas | NO KP MURID | PASSWORD
+function csvToRows(text) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        cell += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push(cell.trim());
+      cell = '';
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') i++;
+      row.push(cell.trim());
+      if (row.some(value => value !== '')) rows.push(row);
+      row = [];
+      cell = '';
+    } else {
+      cell += char;
+    }
+  }
+
+  row.push(cell.trim());
+  if (row.some(value => value !== '')) rows.push(row);
+  return rows;
+}
+
+function parseCSV(text) {
+  const rows = csvToRows(text);
+  if (rows.length < 2) return [];
+
+  return rows.slice(1)
+    .filter(cols => cols.length >= 6 && cols[1])
+    .map(cols => ({
+      email: cols[0] || '',
+      name: cols[1] || '',
+      kelas: cols[3] || '',
+      ic: cols[4] || '',
+      password: cols[5] || ''
+    }));
+}
+
+// Fetch data
+async function loadData() {
+  document.getElementById('loading-state').classList.remove('hidden');
+  document.getElementById('loading-state').classList.add('flex');
+  document.getElementById('empty-state').classList.add('hidden');
+  try {
+    const res = await fetch(CSV_URL + '&t=' + Date.now(), { cache: 'no-store' });
+    const text = await res.text();
+    studentsData = parseCSV(text);
+    document.getElementById('stats-text').textContent = `${studentsData.length} murid berjaya dimuat dari Google Sheet`;
+    document.getElementById('stats').classList.remove('hidden');
+  } catch (e) {
+    showToast('Gagal memuatkan data. Sila semak sambungan internet.', 'error');
+  }
+  document.getElementById('loading-state').classList.add('hidden');
+  document.getElementById('loading-state').classList.remove('flex');
+  document.getElementById('empty-state').classList.remove('hidden');
+  document.getElementById('empty-state').classList.add('flex');
+}
+
+// Search
+const searchInput = document.getElementById('search-input');
+const suggestionsEl = document.getElementById('suggestions');
+
+searchInput.addEventListener('input', function() {
+  const q = this.value.trim().toLowerCase();
+  if (q.length < 2) { suggestionsEl.classList.add('hidden'); return; }
+  const matches = studentsData.filter(s => s.name.toLowerCase().includes(q)).slice(0, 8);
+  if (!matches.length) {
+    suggestionsEl.innerHTML = '<div class="px-4 py-3 text-sm text-ocean-400">Tiada murid ditemui</div>';
+    suggestionsEl.classList.remove('hidden');
+    return;
+  }
+  suggestionsEl.innerHTML = matches.map((s, i) => `
+    <button onclick="selectStudent(${studentsData.indexOf(s)})" class="w-full text-left px-4 py-3 hover:bg-ocean-50 transition-colors flex items-center gap-3 border-b border-ocean-50 last:border-0">
+      <div class="w-8 h-8 rounded-full bg-ocean-100 flex items-center justify-center text-ocean-600 font-700 text-xs shrink-0">${s.name.charAt(0)}</div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-600 text-ocean-800 truncate">${highlightMatch(s.name, q)}</p>
+        <p class="text-xs text-ocean-400">${s.kelas}</p>
+      </div>
+    </button>
+  `).join('');
+  suggestionsEl.classList.remove('hidden');
+});
+
+function highlightMatch(name, q) {
+  const idx = name.toLowerCase().indexOf(q);
+  if (idx === -1) return name;
+  return name.slice(0, idx) + '<mark class="bg-ocean-200 text-ocean-800 rounded px-0.5">' + name.slice(idx, idx + q.length) + '</mark>' + name.slice(idx + q.length);
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#search-input') && !e.target.closest('#suggestions')) {
+    suggestionsEl.classList.add('hidden');
+  }
+});
+
+function selectStudent(idx) {
+  selectedStudent = studentsData[idx];
+  suggestionsEl.classList.add('hidden');
+  searchInput.value = selectedStudent.name;
+
+  document.getElementById('avatar').textContent = selectedStudent.name.charAt(0);
+  document.getElementById('s-name').textContent = selectedStudent.name;
+  document.getElementById('s-class').textContent = selectedStudent.kelas;
+  document.getElementById('s-email').textContent = selectedStudent.email;
+
+  document.getElementById('ic-input').value = '';
+  document.getElementById('verify-error').classList.add('hidden');
+  document.getElementById('password-section').classList.add('hidden');
+
+  document.getElementById('student-card').classList.remove('hidden');
+  document.getElementById('empty-state').classList.add('hidden');
+  document.getElementById('empty-state').classList.remove('flex');
+
+  lucide.createIcons();
+}
+
+function verifyIC() {
+  if (!selectedStudent) return;
+  const input = document.getElementById('ic-input').value.trim();
+  const last4 = selectedStudent.ic.replace(/[^0-9]/g, '').slice(-4);
+
+  if (input === last4) {
+    document.getElementById('verify-error').classList.add('hidden');
+    document.getElementById('s-password').textContent = selectedStudent.password;
+    document.getElementById('password-section').classList.remove('hidden');
+    showToast('Pengesahan berjaya! Password dipaparkan.', 'success');
+    lucide.createIcons();
+  } else {
+    document.getElementById('verify-error').classList.remove('hidden');
+    document.getElementById('password-section').classList.add('hidden');
+    showToast('Pengesahan gagal. Sila cuba semula.', 'error');
+    lucide.createIcons();
+  }
+}
+
+document.getElementById('ic-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); verifyIC(); }
+});
+
+function copyEmail() {
+  if (!selectedStudent) return;
+  navigator.clipboard.writeText(selectedStudent.email).then(() => {
+    showToast('ID DELIMa berjaya disalin!', 'success');
+  });
+}
+
+function copyPassword() {
+  const pw = document.getElementById('s-password').textContent;
+  if (!pw) return;
+  navigator.clipboard.writeText(pw).then(() => {
+    showToast('Password berjaya disalin!', 'success');
+  });
+}
+
+function showToast(msg, type) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  const colors = type === 'success' ? 'bg-mint-500 text-white' : 'bg-red-500 text-white';
+  const icon = type === 'success' ? 'check-circle' : 'x-circle';
+  toast.className = `toast-enter flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg ${colors} text-sm font-600`;
+  toast.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i> ${msg}`;
+  container.appendChild(toast);
+  lucide.createIcons();
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 3000);
+}
+
+// Init
+lucide.createIcons();
+loadData();
+</script></body>
+</html>
