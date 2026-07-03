@@ -132,7 +132,10 @@ tailwind.config = {
 let studentsData = [];
 let selectedStudent = null;
 
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSLl0GPeQkkr3IW9dDsXAr8wPydOqUyM6xc2hzkfW4wnvGHsAelw42tg_vv11hJIZ6i0xqmFItlrSYK/pub?gid=824754415&single=true&output=csv';
+const CSV_URLS = [
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vSLl0GPeQkkr3IW9dDsXAr8wPydOqUyM6xc2hzkfW4wnvGHsAelw42tg_vv11hJIZ6i0xqmFItlrSYK/pub?gid=824754415&single=true&output=csv',
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vSLl0GPeQkkr3IW9dDsXAr8wPydOqUyM6xc2hzkfW4wnvGHsAelw42tg_vv11hJIZ6i0xqmFItlrSYK/pub?output=csv'
+];
 
 // Susunan kolum: Emel | Nama | Tahun/Tingkatan | Kelas | NO KP MURID | PASSWORD
 
@@ -217,19 +220,108 @@ function csvToRows(text) {
   return rows;
 }
 
+
+function normalizeHeader(value) {
+  return (value || '')
+    .toString()
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[._-]/g, ' ');
+}
+
+function findColumnIndex(headers, keywords, fallbackIndex) {
+  const normalized = headers.map(normalizeHeader);
+  for (const keyword of keywords) {
+    const key = normalizeHeader(keyword);
+    const exactIndex = normalized.findIndex(h => h === key);
+    if (exactIndex !== -1) return exactIndex;
+  }
+  for (const keyword of keywords) {
+    const key = normalizeHeader(keyword);
+    const partialIndex = normalized.findIndex(h => h.includes(key) || key.includes(h));
+    if (partialIndex !== -1) return partialIndex;
+  }
+  return fallbackIndex;
+}
+
+function cleanCell(value) {
+  return (value || '').toString().replace(/^\uFEFF/, '').trim();
+}
+
 function parseCSV(text) {
-  const rows = csvToRows(text);
+  if (!text || text.trim().length === 0) return [];
+
+  const rows = csvToRows(text.replace(/^\uFEFF/, ''));
   if (rows.length < 2) return [];
 
+  const headers = rows[0].map(cleanCell);
+
+  // Sistem akan baca ikut nama header dahulu.
+  // Jika header tidak sepadan, sistem akan fallback kepada susunan asal:
+  // Emel | Nama | Tahun/Tingkatan | Kelas | NO KP MURID | PASSWORD
+  const emailIndex = findColumnIndex(headers, ['emel', 'email', 'id delima', 'id emel delima', 'delima', 'id'], 0);
+  const nameIndex = findColumnIndex(headers, ['nama', 'nama murid', 'murid', 'name'], 1);
+  const classIndex = findColumnIndex(headers, ['kelas', 'class'], rows[0].length >= 6 ? 3 : 2);
+  const icIndex = findColumnIndex(headers, ['no kp murid', 'no kp', 'nokp', 'kad pengenalan', 'mykad', 'ic', 'no ic', 'no kad pengenalan'], rows[0].length >= 6 ? 4 : 3);
+  const passwordIndex = findColumnIndex(headers, ['password', 'kata laluan', 'katalaluan', 'pass'], rows[0].length >= 6 ? 5 : 4);
+
   return rows.slice(1)
-    .filter(cols => cols.length >= 6 && cols[1])
     .map(cols => ({
-      email: cols[0] || '',
-      name: cols[1] || '',
-      kelas: cols[3] || '',
-      ic: cols[4] || '',
-      password: cols[5] || ''
-    }));
+      email: cleanCell(cols[emailIndex]),
+      name: cleanCell(cols[nameIndex]),
+      kelas: cleanCell(cols[classIndex]),
+      ic: cleanCell(cols[icIndex]),
+      password: cleanCell(cols[passwordIndex])
+    }))
+    .filter(s => s.name && s.email);
+}
+
+function addCacheBuster(url) {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}t=${Date.now()}`;
+}
+
+async function fetchCSVWithFallback() {
+  let lastError = null;
+
+  for (const url of CSV_URLS) {
+    try {
+      const res = await fetch(addCacheBuster(url), {
+        method: 'GET',
+        cache: 'no-store',
+        redirect: 'follow'
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const text = await res.text();
+
+      if (!text || text.trim().length === 0) {
+        throw new Error('Fail CSV kosong.');
+      }
+
+      if (text.trim().startsWith('<')) {
+        throw new Error('URL tidak memulangkan CSV. Semak tetapan Publish to web Google Sheet.');
+      }
+
+      const parsed = parseCSV(text);
+
+      if (!parsed.length) {
+        throw new Error('CSV berjaya dibaca tetapi tiada rekod murid dikesan. Semak tajuk kolum Google Sheet.');
+      }
+
+      return parsed;
+    } catch (err) {
+      lastError = err;
+      console.warn('Gagal membaca CSV daripada URL:', url, err);
+    }
+  }
+
+  throw lastError || new Error('Gagal membaca data CSV.');
 }
 
 // Fetch data
@@ -237,15 +329,22 @@ async function loadData() {
   document.getElementById('loading-state').classList.remove('hidden');
   document.getElementById('loading-state').classList.add('flex');
   document.getElementById('empty-state').classList.add('hidden');
+
   try {
-    const res = await fetch(CSV_URL + '&t=' + Date.now(), { cache: 'no-store' });
-    const text = await res.text();
-    studentsData = parseCSV(text);
+    studentsData = await fetchCSVWithFallback();
+
     document.getElementById('stats-text').textContent = `${studentsData.length} murid berjaya dimuat dari Google Sheet`;
     document.getElementById('stats').classList.remove('hidden');
+
+    showToast('Data murid berjaya dimuatkan.', 'success');
   } catch (e) {
-    showToast('Gagal memuatkan data. Sila semak sambungan internet.', 'error');
+    console.error(e);
+    studentsData = [];
+    document.getElementById('stats-text').textContent = 'Data murid gagal dimuatkan. Semak tetapan Publish to web dan header Google Sheet.';
+    document.getElementById('stats').classList.remove('hidden');
+    showToast('Gagal memuatkan data. Sila semak Google Sheet telah Publish to web sebagai CSV.', 'error');
   }
+
   document.getElementById('loading-state').classList.add('hidden');
   document.getElementById('loading-state').classList.remove('flex');
   document.getElementById('empty-state').classList.remove('hidden');
@@ -265,22 +364,44 @@ searchInput.addEventListener('input', function() {
     suggestionsEl.classList.remove('hidden');
     return;
   }
-  suggestionsEl.innerHTML = matches.map((s, i) => `
-    <button onclick="selectStudent(${studentsData.indexOf(s)})" class="w-full text-left px-4 py-3 hover:bg-ocean-50 transition-colors flex items-center gap-3 border-b border-ocean-50 last:border-0">
-      <div class="w-8 h-8 rounded-full bg-ocean-100 flex items-center justify-center text-ocean-600 font-700 text-xs shrink-0">${s.name.charAt(0)}</div>
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-600 text-ocean-800 truncate">${highlightMatch(s.name, q)}</p>
-        <p class="text-xs text-ocean-400">${s.kelas}</p>
-      </div>
-    </button>
-  `).join('');
+  suggestionsEl.innerHTML = matches.map((s) => {
+    const idx = studentsData.indexOf(s);
+    return `
+      <button data-student-index="${idx}" class="suggestion-item w-full text-left px-4 py-3 hover:bg-ocean-50 transition-colors flex items-center gap-3 border-b border-ocean-50 last:border-0">
+        <div class="w-8 h-8 rounded-full bg-ocean-100 flex items-center justify-center text-ocean-600 font-700 text-xs shrink-0">${escapeHTML(s.name.charAt(0))}</div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-600 text-ocean-800 truncate">${highlightMatch(s.name, q)}</p>
+          <p class="text-xs text-ocean-400">${escapeHTML(s.kelas)}</p>
+        </div>
+      </button>
+    `;
+  }).join('');
   suggestionsEl.classList.remove('hidden');
+
+  document.querySelectorAll('.suggestion-item').forEach(btn => {
+    btn.addEventListener('click', () => selectStudent(Number(btn.dataset.studentIndex)));
+  });
 });
 
+
+function escapeHTML(value) {
+  return (value || '').toString()
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function highlightMatch(name, q) {
-  const idx = name.toLowerCase().indexOf(q);
-  if (idx === -1) return name;
-  return name.slice(0, idx) + '<mark class="bg-ocean-200 text-ocean-800 rounded px-0.5">' + name.slice(idx, idx + q.length) + '</mark>' + name.slice(idx + q.length);
+  const safeName = (name || '').toString();
+  const idx = safeName.toLowerCase().indexOf(q);
+  if (idx === -1) return escapeHTML(safeName);
+  return escapeHTML(safeName.slice(0, idx)) +
+    '<mark class="bg-ocean-200 text-ocean-800 rounded px-0.5">' +
+    escapeHTML(safeName.slice(idx, idx + q.length)) +
+    '</mark>' +
+    escapeHTML(safeName.slice(idx + q.length));
 }
 
 document.addEventListener('click', e => {
